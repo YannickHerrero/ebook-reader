@@ -5,8 +5,7 @@
  */
 
 import { fromEvent, NEVER, debounceTime, filter, switchMap, of } from 'rxjs';
-import { isJapaneseWord } from '$lib/functions/japanese/segmenter';
-import { lookupWord } from '$lib/functions/japanese/dictionary-lookup';
+import { lookupWordWithSubstrings } from '$lib/functions/japanese/dictionary-lookup';
 import { openWordLookup } from './word-lookup';
 import { getTokenAtPosition } from '$lib/functions/furigana/furigana-generator';
 
@@ -42,22 +41,16 @@ export function wordLookupHandler(contentEl: HTMLElement, enabled: boolean) {
     }),
     filter((result): result is NonNullable<typeof result> => result !== null),
     switchMap(async ({ sentence, sentenceOffset }) => {
-      // Use Kuromoji to find the word at the click position
+      // Get Kuromoji's reading hint for better result ranking
       const token = await getTokenAtPosition(sentence, sentenceOffset);
-      if (!token) return;
+      const readingHint = token?.reading;
 
-      // Skip non-Japanese tokens
-      if (!isJapaneseWord(token.surface_form)) return;
-
-      // Use base form for dictionary lookup if available, otherwise surface form
-      const lookupForm =
-        token.basic_form && token.basic_form !== '*' ? token.basic_form : token.surface_form;
-
-      const results = await lookupWord(lookupForm, token.reading);
+      // Look up with progressively shorter substrings (Yomitan-style)
+      const results = await lookupWordWithSubstrings(sentence, sentenceOffset, 20, readingHint);
 
       if (results.length > 0) {
-        // Display the surface form (what user clicked) but lookup used base form
-        openWordLookup(results, sentence, token.surface_form);
+        // Use the first result's selectedWord for display
+        openWordLookup(results, sentence, results[0].selectedWord);
       }
     })
   );
