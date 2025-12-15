@@ -14,6 +14,7 @@
   import { translateSentence } from '$lib/functions/translation/translate';
 
   const MAX_INITIAL_DEFINITIONS = 5;
+  const MAX_TOP_RESULTS = 3;
 
   /**
    * Adjust the opacity of an rgba color string
