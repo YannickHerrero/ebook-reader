@@ -23,8 +23,13 @@ export interface LookupResult {
 
 /**
  * Look up a word in the dictionary, trying deinflected forms
+ * @param word The word to look up
+ * @param readingHint Optional reading hint from morphological analysis (in hiragana or katakana)
  */
-export async function lookupWord(word: string): Promise<LookupResult[]> {
+export async function lookupWord(word: string, readingHint?: string): Promise<LookupResult[]> {
+  // Normalize reading hint to hiragana for comparison
+  const normalizedHint = readingHint ? katakanaToHiragana(readingHint) : undefined;
+
   // Generate deinflection candidates
   const deinflectionResults = deinflect(word);
 
@@ -64,8 +69,17 @@ export async function lookupWord(word: string): Promise<LookupResult[]> {
     }
   }
 
-  // Sort by score (higher is better/more common)
-  results.sort((a, b) => b.score - a.score);
+  // Sort results: matching reading hint first, then by score
+  results.sort((a, b) => {
+    if (normalizedHint) {
+      const aMatches = katakanaToHiragana(a.reading) === normalizedHint;
+      const bMatches = katakanaToHiragana(b.reading) === normalizedHint;
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+    }
+    // Within same match status, sort by score (higher is better)
+    return b.score - a.score;
+  });
 
   return results;
 }
@@ -159,7 +173,10 @@ function convertToLookupResult(
 /**
  * Get a single best result for a word lookup
  */
-export async function lookupWordBest(word: string): Promise<LookupResult | null> {
-  const results = await lookupWord(word);
+export async function lookupWordBest(
+  word: string,
+  readingHint?: string
+): Promise<LookupResult | null> {
+  const results = await lookupWord(word, readingHint);
   return results.length > 0 ? results[0] : null;
 }
