@@ -172,6 +172,8 @@
 
   export let wordLookupEnabled: boolean;
 
+  export let deeplApiKey: string;
+
   $: availableThemes = (
     browser
       ? [...Array.from(availableThemesMap.entries()), ...Object.entries($customThemes$)]
@@ -764,6 +766,19 @@
     >
       <ButtonToggleGroup options={optionsForToggle} bind:selectedOptionId={wordLookupEnabled} />
     </SettingsItemGroup>
+    {#if wordLookupEnabled}
+      <SettingsItemGroup
+        title="DeepL API Key"
+        tooltip={'Enter your DeepL Free API key to enable sentence translation in the word lookup popup. Get a free key at deepl.com/pro-api'}
+      >
+        <input
+          type="password"
+          class={inputClasses}
+          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
+          bind:value={deeplApiKey}
+        />
+      </SettingsItemGroup>
+    {/if}
     {#if statisticsEnabled}
       <SettingsItemGroup
         title="Custom Point pauses Tracker"

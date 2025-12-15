@@ -61,7 +61,8 @@
     writingMode$,
     readingGoalsMergeMode$,
     hideSpoilerImageMode$,
-    wordLookupEnabled$
+    wordLookupEnabled$,
+    deeplApiKey$
   } from '$lib/data/store';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import { pagePath } from '$lib/data/env';
@@ -198,6 +199,7 @@
       bind:trackerPopupDetection={$trackerPopupDetection$}
       bind:adjustStatisticsAfterIdleTime={$adjustStatisticsAfterIdleTime$}
       bind:wordLookupEnabled={$wordLookupEnabled$}
+      bind:deeplApiKey={$deeplApiKey$}
     />
   </div>
 </div>

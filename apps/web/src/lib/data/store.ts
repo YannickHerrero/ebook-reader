@@ -488,3 +488,6 @@ export const userFonts$ = writableArrayLocalStorageSubject<UserFont>()('userfont
 // Word lookup feature
 export const wordLookupEnabled$ = writableBooleanLocalStorageSubject()('wordLookupEnabled', false);
 export const dictionaryLoaded$ = writableSubject<boolean>(false);
+
+// Translation feature
+export const deeplApiKey$ = writableStringLocalStorageSubject()('deeplApiKey', '');
