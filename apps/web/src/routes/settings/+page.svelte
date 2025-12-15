@@ -60,7 +60,8 @@
     viewMode$,
     writingMode$,
     readingGoalsMergeMode$,
-    hideSpoilerImageMode$
+    hideSpoilerImageMode$,
+    wordLookupEnabled$
   } from '$lib/data/store';
   import { mergeEntries } from '$lib/components/merged-header-icon/merged-entries';
   import { pagePath } from '$lib/data/env';
@@ -196,6 +197,7 @@
       bind:trackerSkipThresholdAction={$trackerSkipThresholdAction$}
       bind:trackerPopupDetection={$trackerPopupDetection$}
       bind:adjustStatisticsAfterIdleTime={$adjustStatisticsAfterIdleTime$}
+      bind:wordLookupEnabled={$wordLookupEnabled$}
     />
   </div>
 </div>

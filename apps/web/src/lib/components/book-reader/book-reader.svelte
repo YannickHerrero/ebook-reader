@@ -28,8 +28,9 @@
   import { reactiveElements } from './reactive-elements';
   import type { AutoScroller, BookmarkManager, PageManager } from './types';
   import BookReaderPaginated from './book-reader-paginated/book-reader-paginated.svelte';
-  import { enableReaderWakeLock$, enableTapEdgeToFlip$ } from '$lib/data/store';
+  import { enableReaderWakeLock$, enableTapEdgeToFlip$, wordLookupEnabled$ } from '$lib/data/store';
   import { onDestroy } from 'svelte';
+  import { wordLookupHandler } from '$lib/components/word-lookup/word-lookup-handler';
 
   export let htmlContent: string;
 
@@ -202,6 +203,10 @@
     reduceToEmptyString()
   );
 
+  const wordLookup$ = iffBrowser(() =>
+    contentEl$.pipe(mergeMap((contentEl) => wordLookupHandler(contentEl, $wordLookupEnabled$)))
+  ).pipe(reduceToEmptyString());
+
   $: width$.next(width);
 
   $: height$.next(height);
@@ -359,4 +364,5 @@
 </div>
 {$blurListener$ ?? ''}
 {$reactiveElements$ ?? ''}
+{$wordLookup$ ?? ''}
 <svelte:document bind:visibilityState />

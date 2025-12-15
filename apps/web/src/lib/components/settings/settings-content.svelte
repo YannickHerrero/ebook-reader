@@ -170,6 +170,8 @@
 
   export let adjustStatisticsAfterIdleTime: boolean;
 
+  export let wordLookupEnabled: boolean;
+
   $: availableThemes = (
     browser
       ? [...Array.from(availableThemesMap.entries()), ...Object.entries($customThemes$)]
@@ -756,6 +758,12 @@
         />
       </SettingsItemGroup>
     {/if}
+    <SettingsItemGroup
+      title="Word Lookup"
+      tooltip={'When enabled, tap on Japanese words to see dictionary definitions. Disables external dictionary popup detection.'}
+    >
+      <ButtonToggleGroup options={optionsForToggle} bind:selectedOptionId={wordLookupEnabled} />
+    </SettingsItemGroup>
     {#if statisticsEnabled}
       <SettingsItemGroup
         title="Custom Point pauses Tracker"

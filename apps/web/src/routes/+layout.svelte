@@ -2,10 +2,17 @@
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
   import DomainHint from '$lib/components/domain-hint.svelte';
+  import DictionaryLoader from '$lib/components/dictionary-loader/dictionary-loader.svelte';
   import { basePath, clearConsoleOnReload } from '$lib/data/env';
   import { dialogManager, type Dialog } from '$lib/data/dialog-manager';
   import { userFontsCacheName, type UserFont } from '$lib/data/fonts';
-  import { fontFamilyGroupOne$, isOnline$, userFonts$ } from '$lib/data/store';
+  import {
+    fontFamilyGroupOne$,
+    isOnline$,
+    userFonts$,
+    wordLookupEnabled$,
+    dictionaryLoaded$
+  } from '$lib/data/store';
   import { dummyFn, isMobile, isMobile$ } from '$lib/functions/utils';
   import { MetaTags } from 'svelte-meta-tags';
   import '../app.scss';
@@ -14,6 +21,20 @@
   let dialogs: Dialog[] = [];
   let clickOnCloseDisabled = false;
   let zIndex = '';
+  let showDictionaryLoader = false;
+
+  $: if (browser && $wordLookupEnabled$ && !$dictionaryLoaded$) {
+    showDictionaryLoader = true;
+  }
+
+  function handleDictionaryLoaded() {
+    $dictionaryLoaded$ = true;
+    showDictionaryLoader = false;
+  }
+
+  function handleDictionaryError() {
+    showDictionaryLoader = false;
+  }
 
   $: if (browser) {
     isMobile$.next(isMobile(window));
@@ -135,3 +156,7 @@
 <span style={`font-family: ${$fontFamilyGroupOne$ || 'Noto Serif JP'}`} />
 
 <DomainHint />
+
+{#if showDictionaryLoader}
+  <DictionaryLoader on:complete={handleDictionaryLoaded} on:error={handleDictionaryError} />
+{/if}

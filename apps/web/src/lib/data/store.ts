@@ -484,3 +484,7 @@ export const isOnline$ = writableSubject<boolean>(true);
 export const skipKeyDownListener$ = writableSubject<boolean>(false);
 
 export const userFonts$ = writableArrayLocalStorageSubject<UserFont>()('userfonts', []);
+
+// Word lookup feature
+export const wordLookupEnabled$ = writableBooleanLocalStorageSubject()('wordLookupEnabled', false);
+export const dictionaryLoaded$ = writableSubject<boolean>(false);

@@ -167,6 +167,7 @@
     getReferencePoints,
     pulseElement
   } from '$lib/functions/range-util';
+  import WordLookupSheet from '$lib/components/word-lookup/word-lookup-sheet.svelte';
 
   let showSpinner = true;
   let showHeader = false;
@@ -1827,6 +1828,8 @@
 {#if bookCompleted}
   <BookCompletionConfetti {confettiWidthModifier} {confettiMaxRuns} {window} />
 {/if}
+
+<WordLookupSheet />
 
 <svelte:window
   on:keydown={onKeydown}

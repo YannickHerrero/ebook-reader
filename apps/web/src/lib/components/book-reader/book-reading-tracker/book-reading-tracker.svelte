@@ -29,7 +29,8 @@
     trackerForwardSkipThreshold$,
     trackerIdleTime$,
     trackerPopupDetection$,
-    trackerSkipThresholdAction$
+    trackerSkipThresholdAction$,
+    wordLookupEnabled$
   } from '$lib/data/store';
   import { ReplicationSaveBehavior } from '$lib/functions/replication/replication-options';
   import { reduceToEmptyString } from '$lib/functions/rxjs/reduce-to-empty-string';
@@ -362,7 +363,7 @@
     );
   }
 
-  $: if ($trackerAutoPause$ !== TrackerAutoPause.OFF && !yomiPopover) {
+  $: if ($trackerAutoPause$ !== TrackerAutoPause.OFF && !yomiPopover && !$wordLookupEnabled$) {
     yomiPopover = document.querySelector(
       '.yomichan-popup,.yomichan-float,.yomitan-popup,.yomitan-float'
     );
@@ -374,7 +375,11 @@
     yomiObserver.disconnect();
   }
 
-  $: if ($trackerAutoPause$ !== TrackerAutoPause.OFF && !$trackerPopupDetection$) {
+  $: if (
+    $trackerAutoPause$ !== TrackerAutoPause.OFF &&
+    !$trackerPopupDetection$ &&
+    !$wordLookupEnabled$
+  ) {
     if (yomiPopover) {
       dictionaryObserver.observe(yomiPopover, { attributes: true });
     }
