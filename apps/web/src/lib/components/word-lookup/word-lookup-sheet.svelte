@@ -6,10 +6,16 @@
   import { clickOutside } from '$lib/functions/use-click-outside';
   import { wordLookupState$, closeWordLookup } from './word-lookup';
   import { skipKeyDownListener$ } from '$lib/data/store';
+  import {
+    addFuriganaWithHighlight,
+    isFuriganaReady
+  } from '$lib/functions/furigana/furigana-generator';
 
   const MAX_INITIAL_DEFINITIONS = 5;
 
   let showAllDefinitions = false;
+  let furiganaHtml = '';
+  let isLoadingFurigana = false;
 
   $: result = $wordLookupState$.results[0];
   $: definitions = result?.definitions || [];
@@ -20,15 +26,34 @@
   $: showDictionaryForm =
     result && result.dictionaryForm !== result.selectedWord && result.dictionaryForm !== '';
 
-  // Highlight the selected word in the sentence
-  $: highlightedSentence = highlightWord(
-    $wordLookupState$.sentence,
-    $wordLookupState$.selectedWord
-  );
+  // Generate furigana for the sentence when it changes
+  $: if ($wordLookupState$.sentence && $wordLookupState$.selectedWord) {
+    generateFurigana($wordLookupState$.sentence, $wordLookupState$.selectedWord);
+  } else {
+    furiganaHtml = '';
+  }
 
   // Disable page navigation when sheet is open
   $: if ($wordLookupState$.isOpen) {
     $skipKeyDownListener$ = true;
+  }
+
+  async function generateFurigana(sentence: string, selectedWord: string): Promise<void> {
+    if (!isFuriganaReady()) {
+      // Fallback to simple highlighting if furigana engine not ready
+      furiganaHtml = highlightWord(sentence, selectedWord);
+      return;
+    }
+
+    isLoadingFurigana = true;
+    try {
+      furiganaHtml = await addFuriganaWithHighlight(sentence, selectedWord);
+    } catch {
+      // Fallback on error
+      furiganaHtml = highlightWord(sentence, selectedWord);
+    } finally {
+      isLoadingFurigana = false;
+    }
   }
 
   function highlightWord(sentence: string, word: string): string {
@@ -41,6 +66,7 @@
 
   function handleClose() {
     showAllDefinitions = false;
+    furiganaHtml = '';
     $skipKeyDownListener$ = false;
     closeWordLookup();
   }
@@ -147,8 +173,12 @@
     {#if $wordLookupState$.sentence}
       <div class="border-t border-gray-200 bg-gray-50 p-4">
         <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Context</div>
-        <div class="mt-1 leading-relaxed text-gray-700">
-          {@html highlightedSentence}
+        <div class="mt-1 leading-relaxed text-gray-700 sentence-context">
+          {#if isLoadingFurigana}
+            <span class="text-gray-400">{$wordLookupState$.sentence}</span>
+          {:else}
+            {@html furiganaHtml}
+          {/if}
         </div>
       </div>
     {/if}
@@ -173,5 +203,19 @@
       max-width: 32rem;
       border-radius: 1rem 1rem 0 0;
     }
+  }
+
+  /* Furigana styling */
+  .sentence-context :global(ruby) {
+    ruby-align: center;
+  }
+
+  .sentence-context :global(rt) {
+    font-size: 0.6em;
+    color: #6b7280;
+  }
+
+  .sentence-context :global(rp) {
+    display: none;
   }
 </style>
