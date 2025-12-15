@@ -19,6 +19,7 @@ export interface LookupResult {
   definitions: string[];
   inflectionPath: string[];
   score: number;
+  matchLength: number;
 }
 
 /**
@@ -85,6 +86,91 @@ export async function lookupWord(word: string, readingHint?: string): Promise<Lo
 }
 
 /**
+ * Look up words with progressively shorter substrings, deinflecting at each step
+ * This mimics Yomitan's behavior of showing matches from longest to shortest
+ * @param text The full text containing the word
+ * @param startIndex The character index where the word starts
+ * @param maxLength Maximum substring length to try (default 20)
+ * @param readingHint Optional reading hint from morphological analysis
+ */
+export async function lookupWordWithSubstrings(
+  text: string,
+  startIndex: number,
+  maxLength: number = 20,
+  readingHint?: string
+): Promise<LookupResult[]> {
+  const normalizedHint = readingHint ? katakanaToHiragana(readingHint) : undefined;
+  const results: LookupResult[] = [];
+  const seenSequences = new Set<number>();
+
+  // Try progressively shorter substrings
+  const endIndex = Math.min(startIndex + maxLength, text.length);
+
+  for (let len = endIndex - startIndex; len >= 1; len--) {
+    const substring = text.slice(startIndex, startIndex + len);
+
+    // Skip if substring contains sentence-ending punctuation
+    if (/[。！？\n\r]/.test(substring)) continue;
+
+    // Generate deinflection candidates for this substring
+    const deinflectionResults = deinflect(substring);
+
+    // Also try katakana -> hiragana conversion
+    const hiraganaSubstring = katakanaToHiragana(substring);
+    if (hiraganaSubstring !== substring) {
+      const hiraganaDeinflections = deinflect(hiraganaSubstring);
+      for (const d of hiraganaDeinflections) {
+        if (!deinflectionResults.some((r) => r.term === d.term)) {
+          deinflectionResults.push(d);
+        }
+      }
+    }
+
+    // Try each deinflection candidate
+    for (const deinflection of deinflectionResults) {
+      const entries = await lookupByTermOrReading(deinflection.term);
+
+      for (const entry of entries) {
+        // Skip if we've already seen this entry
+        if (seenSequences.has(entry.sequence)) {
+          continue;
+        }
+
+        // Validate that the deinflection rules match the entry's grammar
+        if (!validateDeinflection(deinflection, entry)) {
+          continue;
+        }
+
+        seenSequences.add(entry.sequence);
+
+        const result = convertToLookupResult(substring, deinflection, entry, len);
+        results.push(result);
+      }
+    }
+  }
+
+  // Sort: longest match first, then reading hint match, then score
+  results.sort((a, b) => {
+    // 1. Longer matches first
+    const lengthDiff = b.matchLength - a.matchLength;
+    if (lengthDiff !== 0) return lengthDiff;
+
+    // 2. Reading hint matches first
+    if (normalizedHint) {
+      const aMatches = katakanaToHiragana(a.reading) === normalizedHint;
+      const bMatches = katakanaToHiragana(b.reading) === normalizedHint;
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+    }
+
+    // 3. Higher score (frequency) wins
+    return b.score - a.score;
+  });
+
+  return results;
+}
+
+/**
  * Validate that the deinflection rules match the dictionary entry's grammar
  */
 function validateDeinflection(deinflection: DeinflectionResult, entry: DictionaryEntry): boolean {
@@ -140,7 +226,8 @@ function validateDeinflection(deinflection: DeinflectionResult, entry: Dictionar
 function convertToLookupResult(
   selectedWord: string,
   deinflection: DeinflectionResult,
-  entry: DictionaryEntry
+  entry: DictionaryEntry,
+  matchLength?: number
 ): LookupResult {
   // Extract all definitions as plain text
   const definitions: string[] = [];
@@ -166,7 +253,8 @@ function convertToLookupResult(
     partOfSpeech,
     definitions,
     inflectionPath: deinflection.reasons,
-    score: entry.score
+    score: entry.score,
+    matchLength: matchLength ?? selectedWord.length
   };
 }
 
