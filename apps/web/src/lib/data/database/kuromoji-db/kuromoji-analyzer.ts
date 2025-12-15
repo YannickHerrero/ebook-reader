@@ -12,13 +12,15 @@ import {
 } from './kuromoji-loader';
 
 /**
- * Token format expected by kuroshiro
+ * Token format expected by kuroshiro (extended with additional fields for word lookup)
  */
-interface KuroshiroToken {
+export interface KuroshiroToken {
   surface_form: string;
   pos: string;
   reading?: string;
   pronunciation?: string;
+  basic_form?: string;
+  word_position: number;
 }
 
 /**
@@ -71,12 +73,19 @@ export class CachingKuromojiAnalyzer {
 
     const tokens: IpadicFeatures[] = this.tokenizer.tokenize(text);
 
-    // Convert to kuroshiro format
-    return tokens.map((token) => ({
-      surface_form: token.surface_form,
-      pos: token.pos,
-      reading: token.reading,
-      pronunciation: token.pronunciation
-    }));
+    // Convert to kuroshiro format with word positions
+    let position = 0;
+    return tokens.map((token) => {
+      const result: KuroshiroToken = {
+        surface_form: token.surface_form,
+        pos: token.pos,
+        reading: token.reading,
+        pronunciation: token.pronunciation,
+        basic_form: token.basic_form,
+        word_position: position
+      };
+      position += token.surface_form.length;
+      return result;
+    });
   }
 }
