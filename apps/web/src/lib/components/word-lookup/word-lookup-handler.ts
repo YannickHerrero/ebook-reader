@@ -12,6 +12,7 @@ import {
 } from '$lib/functions/japanese/segmenter';
 import { lookupWord } from '$lib/functions/japanese/dictionary-lookup';
 import { openWordLookup } from './word-lookup';
+import { analyzeText } from '$lib/functions/furigana/furigana-generator';
 
 /**
  * Create a word lookup click handler for the content element
@@ -45,7 +46,9 @@ export function wordLookupHandler(contentEl: HTMLElement, enabled: boolean) {
     }),
     filter((result): result is NonNullable<typeof result> => result !== null),
     switchMap(async ({ word, sentence }) => {
-      const results = await lookupWord(word);
+      // Get contextual reading from Kuromoji morphological analysis
+      const readingHint = await getReadingFromContext(sentence, word);
+      const results = await lookupWord(word, readingHint);
 
       if (results.length > 0) {
         openWordLookup(results, sentence, word);
@@ -57,6 +60,35 @@ export function wordLookupHandler(contentEl: HTMLElement, enabled: boolean) {
 interface TextClickResult {
   word: string;
   sentence: string;
+}
+
+/**
+ * Get the contextual reading for a word using Kuromoji morphological analysis
+ * Returns the reading in katakana, or undefined if not found
+ */
+async function getReadingFromContext(sentence: string, word: string): Promise<string | undefined> {
+  try {
+    const tokens = await analyzeText(sentence);
+
+    // Find the token matching the clicked word
+    const token = tokens.find((t) => t.surface_form === word);
+    if (token?.reading) {
+      return token.reading;
+    }
+
+    // If exact match not found, try to find a token that starts with the word
+    // (handles cases where Kuromoji might segment differently)
+    const partialMatch = tokens.find(
+      (t) => t.surface_form.startsWith(word) || word.startsWith(t.surface_form)
+    );
+    if (partialMatch?.reading) {
+      return partialMatch.reading;
+    }
+  } catch {
+    // Ignore errors, will fall back to score-based sorting
+  }
+
+  return undefined;
 }
 
 /**
