@@ -12,6 +12,8 @@ export interface MorphToken {
   surface_form: string;
   reading?: string;
   pos: string;
+  basic_form?: string;
+  word_position: number;
 }
 
 let kuroshiroInstance: Kuroshiro | null = null;
@@ -61,6 +63,36 @@ export async function analyzeText(text: string): Promise<MorphToken[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Get the token at a specific character position in the text
+ * Returns the token containing the character at charIndex
+ */
+export async function getTokenAtPosition(
+  text: string,
+  charIndex: number
+): Promise<MorphToken | null> {
+  if (!analyzerInstance || charIndex < 0 || charIndex >= text.length) {
+    return null;
+  }
+
+  try {
+    const tokens = await analyzerInstance.parse(text);
+
+    for (const token of tokens) {
+      const start = token.word_position;
+      const end = start + token.surface_form.length;
+
+      if (charIndex >= start && charIndex < end) {
+        return token;
+      }
+    }
+  } catch {
+    // Return null on error
+  }
+
+  return null;
 }
 
 /**
