@@ -5,14 +5,10 @@
  */
 
 import { fromEvent, NEVER, debounceTime, filter, switchMap, of } from 'rxjs';
-import {
-  getWordAtPosition,
-  getSentenceContaining,
-  isJapaneseWord
-} from '$lib/functions/japanese/segmenter';
+import { isJapaneseWord } from '$lib/functions/japanese/segmenter';
 import { lookupWord } from '$lib/functions/japanese/dictionary-lookup';
 import { openWordLookup } from './word-lookup';
-import { analyzeText } from '$lib/functions/furigana/furigana-generator';
+import { getTokenAtPosition } from '$lib/functions/furigana/furigana-generator';
 
 /**
  * Create a word lookup click handler for the content element
@@ -45,54 +41,35 @@ export function wordLookupHandler(contentEl: HTMLElement, enabled: boolean) {
       return of(result);
     }),
     filter((result): result is NonNullable<typeof result> => result !== null),
-    switchMap(async ({ word, sentence }) => {
-      // Get contextual reading from Kuromoji morphological analysis
-      const readingHint = await getReadingFromContext(sentence, word);
-      const results = await lookupWord(word, readingHint);
+    switchMap(async ({ sentence, sentenceOffset }) => {
+      // Use Kuromoji to find the word at the click position
+      const token = await getTokenAtPosition(sentence, sentenceOffset);
+      if (!token) return;
+
+      // Skip non-Japanese tokens
+      if (!isJapaneseWord(token.surface_form)) return;
+
+      // Use base form for dictionary lookup if available, otherwise surface form
+      const lookupForm =
+        token.basic_form && token.basic_form !== '*' ? token.basic_form : token.surface_form;
+
+      const results = await lookupWord(lookupForm, token.reading);
 
       if (results.length > 0) {
-        openWordLookup(results, sentence, word);
+        // Display the surface form (what user clicked) but lookup used base form
+        openWordLookup(results, sentence, token.surface_form);
       }
     })
   );
 }
 
 interface TextClickResult {
-  word: string;
   sentence: string;
+  sentenceOffset: number;
 }
 
 /**
- * Get the contextual reading for a word using Kuromoji morphological analysis
- * Returns the reading in katakana, or undefined if not found
- */
-async function getReadingFromContext(sentence: string, word: string): Promise<string | undefined> {
-  try {
-    const tokens = await analyzeText(sentence);
-
-    // Find the token matching the clicked word
-    const token = tokens.find((t) => t.surface_form === word);
-    if (token?.reading) {
-      return token.reading;
-    }
-
-    // If exact match not found, try to find a token that starts with the word
-    // (handles cases where Kuromoji might segment differently)
-    const partialMatch = tokens.find(
-      (t) => t.surface_form.startsWith(word) || word.startsWith(t.surface_form)
-    );
-    if (partialMatch?.reading) {
-      return partialMatch.reading;
-    }
-  } catch {
-    // Ignore errors, will fall back to score-based sorting
-  }
-
-  return undefined;
-}
-
-/**
- * Process a click event to extract the clicked word and sentence
+ * Process a click event to extract the sentence and click offset
  */
 function processTextClick(event: MouseEvent, _contentEl: HTMLElement): TextClickResult | null {
   const { clientX, clientY } = event;
@@ -101,31 +78,22 @@ function processTextClick(event: MouseEvent, _contentEl: HTMLElement): TextClick
   const textInfo = getTextAtPoint(clientX, clientY);
   if (!textInfo) return null;
 
-  const { text, offset, node } = textInfo;
-
-  // Handle ruby elements - get the base text, not furigana
-  const adjustedText = getRubyBaseText(node, text);
-
-  // Get the word at the clicked position
-  const wordInfo = getWordAtPosition(adjustedText, offset);
-  if (!wordInfo || !wordInfo.isWordLike) return null;
-
-  // Check if it's a Japanese word
-  if (!isJapaneseWord(wordInfo.word)) return null;
+  const { offset, node } = textInfo;
 
   // Get the containing paragraph for sentence extraction
   const paragraph = node.parentElement?.closest('p');
-  const paragraphText = paragraph ? getTextContent(paragraph) : adjustedText;
+  const paragraphText = paragraph ? getTextContent(paragraph) : node.textContent || '';
 
-  // Find the sentence containing the word
-  const sentence = getSentenceContaining(
-    paragraphText,
-    findWordInParagraph(paragraphText, wordInfo.word, offset)
-  );
+  // Calculate the offset of the clicked character within the paragraph
+  const clickOffsetInParagraph = calculateOffsetInParagraph(node, offset, paragraph);
+
+  // Find the sentence containing the click and get the offset within it
+  const sentenceInfo = getSentenceWithOffset(paragraphText, clickOffsetInParagraph);
+  if (!sentenceInfo) return null;
 
   return {
-    word: wordInfo.word,
-    sentence
+    sentence: sentenceInfo.sentence,
+    sentenceOffset: sentenceInfo.offsetInSentence
   };
 }
 
@@ -161,61 +129,6 @@ function getTextAtPoint(x: number, y: number): { text: string; offset: number; n
 }
 
 /**
- * Handle ruby elements - return the base text without furigana
- */
-function getRubyBaseText(node: Node, text: string): string {
-  const parent = node.parentElement;
-
-  // If we're inside an <rt> element (furigana), get the parent ruby's base text
-  if (parent?.tagName === 'RT') {
-    const ruby = parent.closest('ruby');
-    if (ruby) {
-      // Get text content excluding <rt> elements
-      return getTextContentExcludingRt(ruby);
-    }
-  }
-
-  // If we're inside a <ruby> element but not in <rt>
-  if (parent?.closest('ruby')) {
-    const ruby = parent.closest('ruby');
-    if (ruby && !parent.closest('rt')) {
-      return getTextContentExcludingRt(ruby);
-    }
-  }
-
-  return text;
-}
-
-/**
- * Get text content of an element, excluding <rt> and <rp> elements
- */
-function getTextContentExcludingRt(element: Element): string {
-  let text = '';
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => {
-      const parent = node.parentElement;
-      if (
-        parent?.tagName === 'RT' ||
-        parent?.closest('rt') ||
-        parent?.tagName === 'RP' ||
-        parent?.closest('rp')
-      ) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      return NodeFilter.FILTER_ACCEPT;
-    }
-  });
-
-  let current = walker.nextNode();
-  while (current) {
-    text += current.textContent;
-    current = walker.nextNode();
-  }
-
-  return text;
-}
-
-/**
  * Get clean text content of an element (for paragraphs)
  */
 function getTextContent(element: Element): string {
@@ -247,24 +160,90 @@ function getTextContent(element: Element): string {
 }
 
 /**
- * Find the position of a word in paragraph text
+ * Calculate the character offset within a paragraph for a click position
  */
-function findWordInParagraph(
-  paragraphText: string,
-  word: string,
-  approximateOffset: number
+function calculateOffsetInParagraph(
+  clickedNode: Node,
+  offsetInNode: number,
+  paragraph: Element | null | undefined
 ): number {
-  // First, try to find the word near the approximate offset
-  const searchStart = Math.max(0, approximateOffset - word.length * 2);
-  const searchEnd = Math.min(paragraphText.length, approximateOffset + word.length * 2);
-  const searchRegion = paragraphText.slice(searchStart, searchEnd);
-
-  const indexInRegion = searchRegion.indexOf(word);
-  if (indexInRegion !== -1) {
-    return searchStart + indexInRegion;
+  if (!paragraph) {
+    return offsetInNode;
   }
 
-  // Fallback: find first occurrence
-  const index = paragraphText.indexOf(word);
-  return index !== -1 ? index : approximateOffset;
+  // Walk through all text nodes in the paragraph to find the offset
+  let totalOffset = 0;
+  const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      const parent = node.parentElement;
+      // Skip furigana text and ruby parentheses
+      if (
+        parent?.tagName === 'RT' ||
+        parent?.closest('rt') ||
+        parent?.tagName === 'RP' ||
+        parent?.closest('rp')
+      ) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  let current = walker.nextNode();
+  while (current) {
+    if (current === clickedNode) {
+      return totalOffset + offsetInNode;
+    }
+    totalOffset += current.textContent?.length || 0;
+    current = walker.nextNode();
+  }
+
+  return offsetInNode;
+}
+
+/**
+ * Find the sentence containing a character position and return offset within it
+ */
+function getSentenceWithOffset(
+  text: string,
+  charIndex: number
+): { sentence: string; offsetInSentence: number } | null {
+  if (charIndex < 0 || charIndex >= text.length) {
+    return null;
+  }
+
+  // Japanese sentence-ending punctuation
+  const sentenceEnders = /[。！？\n\r。？！‥…⋯]+/g;
+
+  // Find sentence boundaries
+  const matches = [...text.matchAll(sentenceEnders)];
+  const boundaries: number[] = [0];
+
+  for (const match of matches) {
+    if (match.index !== undefined) {
+      boundaries.push(match.index + match[0].length);
+    }
+  }
+  boundaries.push(text.length);
+
+  // Find which sentence contains our character
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const start = boundaries[i];
+    const end = boundaries[i + 1];
+
+    if (charIndex >= start && charIndex < end) {
+      const sentence = text.slice(start, end).trim();
+      // Adjust offset for leading whitespace that was trimmed
+      const leadingWhitespace =
+        text.slice(start, end).length - text.slice(start, end).trimStart().length;
+      const offsetInSentence = charIndex - start - leadingWhitespace;
+
+      return {
+        sentence,
+        offsetInSentence: Math.max(0, offsetInSentence)
+      };
+    }
+  }
+
+  return null;
 }
