@@ -14,7 +14,7 @@
   import { translateSentence } from '$lib/functions/translation/translate';
 
   const MAX_INITIAL_DEFINITIONS = 5;
-  const MAX_TOP_RESULTS = 3;
+  const MAX_TOP_RESULTS = 10;
 
   /**
    * Adjust the opacity of an rgba color string
@@ -41,12 +41,14 @@
   $: tagBgColor = adjustColorOpacity(fontColor, 0.08);
 
   let showAllDefinitions = false;
+  let showMoreEntries = false;
   let furiganaHtml = '';
   let isLoadingFurigana = false;
   let translation = '';
   let translationError = '';
   let isLoadingTranslation = false;
 
+  // Primary result (first/best match)
   $: result = $wordLookupState$.results[0];
   $: definitions = result?.definitions || [];
   $: visibleDefinitions = showAllDefinitions
@@ -55,6 +57,10 @@
   $: hasMoreDefinitions = definitions.length > MAX_INITIAL_DEFINITIONS;
   $: showDictionaryForm =
     result && result.dictionaryForm !== result.selectedWord && result.dictionaryForm !== '';
+
+  // Additional results (for "show more entries")
+  $: additionalResults = $wordLookupState$.results.slice(1, MAX_TOP_RESULTS + 1);
+  $: hasMoreEntries = additionalResults.length > 0;
 
   // Generate furigana for the sentence when it changes
   $: if ($wordLookupState$.sentence && $wordLookupState$.selectedWord) {
@@ -125,6 +131,7 @@
 
   function handleClose() {
     showAllDefinitions = false;
+    showMoreEntries = false;
     furiganaHtml = '';
     translation = '';
     translationError = '';
@@ -134,6 +141,10 @@
 
   function toggleDefinitions() {
     showAllDefinitions = !showAllDefinitions;
+  }
+
+  function toggleMoreEntries() {
+    showMoreEntries = !showMoreEntries;
   }
 </script>
 
@@ -233,6 +244,62 @@
         {/if}
       {:else}
         <p style="color: {mutedTextColor};">No definitions found</p>
+      {/if}
+
+      <!-- Additional dictionary entries -->
+      {#if hasMoreEntries}
+        <div class="mt-4 border-t pt-4" style="border-color: {borderColor};">
+          <button
+            class="toggle-button flex w-full items-center gap-1 text-sm"
+            style="color: {secondaryTextColor}; --hover-color: {fontColor};"
+            on:click={toggleMoreEntries}
+          >
+            <Fa icon={showMoreEntries ? faChevronUp : faChevronDown} size="sm" />
+            {showMoreEntries
+              ? 'Hide other entries'
+              : `Show ${additionalResults.length} more ${additionalResults.length === 1 ? 'entry' : 'entries'}`}
+          </button>
+
+          {#if showMoreEntries}
+            <div class="mt-3 space-y-3">
+              {#each additionalResults as entry}
+                <div class="rounded-lg p-3" style="background-color: {sectionBgColor};">
+                  <!-- Entry header: word and reading -->
+                  <div class="flex items-baseline gap-2">
+                    <span class="font-medium">{entry.selectedWord}</span>
+                    {#if entry.dictionaryForm && entry.dictionaryForm !== entry.selectedWord}
+                      <span style="color: {secondaryTextColor};">→ {entry.dictionaryForm}</span>
+                    {/if}
+                    {#if entry.reading && entry.reading !== entry.dictionaryForm}
+                      <span style="color: {mutedTextColor};">【{entry.reading}】</span>
+                    {/if}
+                  </div>
+
+                  <!-- Inflection path -->
+                  {#if entry.inflectionPath.length > 0}
+                    <div class="mt-1 text-xs" style="color: {mutedTextColor};">
+                      {entry.inflectionPath.join(' → ')}
+                    </div>
+                  {/if}
+
+                  <!-- Definitions (up to 3) -->
+                  {#if entry.definitions.length > 0}
+                    <div class="mt-1 text-sm" style="color: {secondaryTextColor};">
+                      {#each entry.definitions.slice(0, 3) as def, i}
+                        <div>{i + 1}. {def}</div>
+                      {/each}
+                      {#if entry.definitions.length > 3}
+                        <div style="color: {mutedTextColor};">
+                          (+{entry.definitions.length - 3} more)
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
     </div>
 
