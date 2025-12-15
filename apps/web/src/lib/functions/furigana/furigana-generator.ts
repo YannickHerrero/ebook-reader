@@ -8,7 +8,14 @@ import Kuroshiro from 'kuroshiro';
 import { CachingKuromojiAnalyzer } from '$lib/data/database/kuromoji-db/kuromoji-analyzer';
 import type { KuromojiProgressCallback } from '$lib/data/database/kuromoji-db/kuromoji-loader';
 
+export interface MorphToken {
+  surface_form: string;
+  reading?: string;
+  pos: string;
+}
+
 let kuroshiroInstance: Kuroshiro | null = null;
+let analyzerInstance: CachingKuromojiAnalyzer | null = null;
 let initPromise: Promise<void> | null = null;
 
 /**
@@ -25,9 +32,9 @@ export async function initFuriganaGenerator(onProgress?: KuromojiProgressCallbac
   }
 
   initPromise = (async () => {
-    const analyzer = new CachingKuromojiAnalyzer({ onProgress });
+    analyzerInstance = new CachingKuromojiAnalyzer({ onProgress });
     kuroshiroInstance = new Kuroshiro();
-    await kuroshiroInstance.init(analyzer);
+    await kuroshiroInstance.init(analyzerInstance);
   })();
 
   return initPromise;
@@ -38,6 +45,22 @@ export async function initFuriganaGenerator(onProgress?: KuromojiProgressCallbac
  */
 export function isFuriganaReady(): boolean {
   return kuroshiroInstance !== null;
+}
+
+/**
+ * Analyze text with Kuromoji and return tokens with readings
+ * Useful for getting context-aware readings of words
+ */
+export async function analyzeText(text: string): Promise<MorphToken[]> {
+  if (!analyzerInstance) {
+    return [];
+  }
+
+  try {
+    return analyzerInstance.parse(text);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -140,5 +163,6 @@ function highlightWordInFurigana(html: string, word: string): string {
  */
 export function resetFuriganaGenerator(): void {
   kuroshiroInstance = null;
+  analyzerInstance = null;
   initPromise = null;
 }
