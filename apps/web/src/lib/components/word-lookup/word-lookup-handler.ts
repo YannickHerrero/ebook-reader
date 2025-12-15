@@ -155,14 +155,19 @@ function getRubyBaseText(node: Node, text: string): string {
 }
 
 /**
- * Get text content of an element, excluding <rt> elements
+ * Get text content of an element, excluding <rt> and <rp> elements
  */
 function getTextContentExcludingRt(element: Element): string {
   let text = '';
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
       const parent = node.parentElement;
-      if (parent?.tagName === 'RT' || parent?.closest('rt')) {
+      if (
+        parent?.tagName === 'RT' ||
+        parent?.closest('rt') ||
+        parent?.tagName === 'RP' ||
+        parent?.closest('rp')
+      ) {
         return NodeFilter.FILTER_REJECT;
       }
       return NodeFilter.FILTER_ACCEPT;
@@ -182,13 +187,18 @@ function getTextContentExcludingRt(element: Element): string {
  * Get clean text content of an element (for paragraphs)
  */
 function getTextContent(element: Element): string {
-  // Get text content, preserving ruby base text
+  // Get text content, preserving ruby base text but excluding furigana and ruby parentheses
   let text = '';
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
       const parent = node.parentElement;
-      // Skip furigana text
-      if (parent?.tagName === 'RT' || parent?.closest('rt')) {
+      // Skip furigana text and ruby parentheses
+      if (
+        parent?.tagName === 'RT' ||
+        parent?.closest('rt') ||
+        parent?.tagName === 'RP' ||
+        parent?.closest('rp')
+      ) {
         return NodeFilter.FILTER_REJECT;
       }
       return NodeFilter.FILTER_ACCEPT;

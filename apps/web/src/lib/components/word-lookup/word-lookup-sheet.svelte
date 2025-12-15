@@ -5,17 +5,46 @@
   import Fa from 'svelte-fa';
   import { clickOutside } from '$lib/functions/use-click-outside';
   import { wordLookupState$, closeWordLookup } from './word-lookup';
-  import { skipKeyDownListener$ } from '$lib/data/store';
+  import { skipKeyDownListener$, deeplApiKey$, theme$, customThemes$ } from '$lib/data/store';
+  import { availableThemes } from '$lib/data/theme-option';
   import {
     addFuriganaWithHighlight,
     isFuriganaReady
   } from '$lib/functions/furigana/furigana-generator';
+  import { translateSentence } from '$lib/functions/translation/translate';
 
   const MAX_INITIAL_DEFINITIONS = 5;
+
+  /**
+   * Adjust the opacity of an rgba color string
+   */
+  function adjustColorOpacity(color: string, alpha: number): string {
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+      return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`;
+    }
+    return color;
+  }
+
+  // Theme colors - match the book content theme
+  $: themeOption =
+    availableThemes.get($theme$) || $customThemes$[$theme$] || availableThemes.get('light-theme');
+  $: backgroundColor = themeOption?.backgroundColor || 'rgba(255, 255, 255, 1)';
+  $: fontColor = themeOption?.fontColor || 'rgba(0, 0, 0, 0.87)';
+  $: borderColor = adjustColorOpacity(fontColor, 0.15);
+  $: secondaryTextColor = adjustColorOpacity(fontColor, 0.6);
+  $: mutedTextColor = adjustColorOpacity(fontColor, 0.4);
+  $: sectionBgColor = adjustColorOpacity(fontColor, 0.05);
+  $: highlightColor = adjustColorOpacity(fontColor, 0.2);
+  $: hoverBgColor = adjustColorOpacity(fontColor, 0.1);
+  $: tagBgColor = adjustColorOpacity(fontColor, 0.08);
 
   let showAllDefinitions = false;
   let furiganaHtml = '';
   let isLoadingFurigana = false;
+  let translation = '';
+  let translationError = '';
+  let isLoadingTranslation = false;
 
   $: result = $wordLookupState$.results[0];
   $: definitions = result?.definitions || [];
@@ -31,6 +60,14 @@
     generateFurigana($wordLookupState$.sentence, $wordLookupState$.selectedWord);
   } else {
     furiganaHtml = '';
+  }
+
+  // Fetch translation when sentence changes and API key is configured
+  $: if ($wordLookupState$.sentence && $deeplApiKey$) {
+    fetchTranslation($wordLookupState$.sentence, $deeplApiKey$);
+  } else {
+    translation = '';
+    translationError = '';
   }
 
   // Disable page navigation when sheet is open
@@ -56,17 +93,40 @@
     }
   }
 
+  async function fetchTranslation(sentence: string, apiKey: string): Promise<void> {
+    if (!sentence || !apiKey) {
+      translation = '';
+      translationError = '';
+      return;
+    }
+
+    isLoadingTranslation = true;
+    translationError = '';
+    try {
+      const result = await translateSentence(sentence, apiKey);
+      translation = result.translation || '';
+      translationError = result.error || '';
+    } catch {
+      translationError = 'Translation failed. Please try again.';
+      translation = '';
+    } finally {
+      isLoadingTranslation = false;
+    }
+  }
+
   function highlightWord(sentence: string, word: string): string {
     if (!sentence || !word) return sentence;
 
     const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`(${escaped})`, 'g');
-    return sentence.replace(regex, '<mark class="bg-yellow-300/50 rounded px-0.5">$1</mark>');
+    return sentence.replace(regex, '<mark class="word-highlight">$1</mark>');
   }
 
   function handleClose() {
     showAllDefinitions = false;
     furiganaHtml = '';
+    translation = '';
+    translationError = '';
     $skipKeyDownListener$ = false;
     closeWordLookup();
   }
@@ -88,27 +148,28 @@
 
   <!-- Bottom sheet -->
   <div
-    class="writing-horizontal-tb fixed z-[71] flex flex-col bg-white shadow-2xl bottom-sheet"
+    class="writing-horizontal-tb fixed z-[71] flex flex-col shadow-2xl bottom-sheet"
+    style="background-color: {backgroundColor}; color: {fontColor}; --highlight-color: {highlightColor}; --muted-color: {mutedTextColor};"
     in:fly|local={{ y: 100, duration: 200, easing: quintInOut }}
     out:fly|local={{ y: 100, duration: 150, easing: quintInOut }}
     use:clickOutside={handleClose}
   >
     <!-- Header -->
-    <div class="flex items-start justify-between border-b border-gray-200 p-4">
+    <div class="flex items-start justify-between border-b p-4" style="border-color: {borderColor};">
       <div class="flex-1 pr-4">
         <!-- Selected word -->
-        <div class="text-2xl font-medium text-gray-900">
+        <div class="text-2xl font-medium">
           {$wordLookupState$.selectedWord}
         </div>
 
         <!-- Dictionary form and reading -->
         {#if showDictionaryForm || result.reading}
-          <div class="mt-1 text-lg text-gray-600">
+          <div class="mt-1 text-lg" style="color: {secondaryTextColor};">
             {#if showDictionaryForm}
               <span class="font-medium">{result.dictionaryForm}</span>
             {/if}
             {#if result.reading && result.reading !== result.dictionaryForm}
-              <span class="text-gray-500">【{result.reading}】</span>
+              <span style="color: {mutedTextColor};">【{result.reading}】</span>
             {/if}
           </div>
         {/if}
@@ -117,7 +178,10 @@
         {#if result.partOfSpeech.length > 0}
           <div class="mt-1 flex flex-wrap gap-1">
             {#each result.partOfSpeech as pos}
-              <span class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+              <span
+                class="rounded px-2 py-0.5 text-xs"
+                style="background-color: {tagBgColor}; color: {secondaryTextColor};"
+              >
                 {pos}
               </span>
             {/each}
@@ -126,7 +190,7 @@
 
         <!-- Inflection path -->
         {#if result.inflectionPath.length > 0}
-          <div class="mt-1 text-xs text-gray-400">
+          <div class="mt-1 text-xs" style="color: {mutedTextColor};">
             {result.inflectionPath.join(' → ')}
           </div>
         {/if}
@@ -134,7 +198,8 @@
 
       <!-- Close button -->
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        class="close-button flex h-8 w-8 items-center justify-center rounded-full"
+        style="color: {mutedTextColor}; --hover-bg: {hoverBgColor}; --hover-color: {secondaryTextColor};"
         on:click={handleClose}
         aria-label="Close"
       >
@@ -145,7 +210,7 @@
     <!-- Definitions -->
     <div class="flex-1 overflow-y-auto p-4">
       {#if visibleDefinitions.length > 0}
-        <ol class="list-inside list-decimal space-y-2 text-gray-700">
+        <ol class="list-inside list-decimal space-y-2">
           {#each visibleDefinitions as definition, i}
             <li class="leading-relaxed">
               {definition}
@@ -155,7 +220,8 @@
 
         {#if hasMoreDefinitions}
           <button
-            class="mt-3 flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+            class="toggle-button mt-3 flex items-center gap-1 text-sm"
+            style="color: {secondaryTextColor}; --hover-color: {fontColor};"
             on:click={toggleDefinitions}
           >
             <Fa icon={showAllDefinitions ? faChevronUp : faChevronDown} size="sm" />
@@ -165,19 +231,45 @@
           </button>
         {/if}
       {:else}
-        <p class="text-gray-500">No definitions found</p>
+        <p style="color: {mutedTextColor};">No definitions found</p>
       {/if}
     </div>
 
     <!-- Sentence context -->
     {#if $wordLookupState$.sentence}
-      <div class="border-t border-gray-200 bg-gray-50 p-4">
-        <div class="text-xs font-medium uppercase tracking-wide text-gray-400">Context</div>
-        <div class="mt-1 leading-relaxed text-gray-700 sentence-context">
+      <div
+        class="border-t p-4"
+        style="border-color: {borderColor}; background-color: {sectionBgColor};"
+      >
+        <div class="text-xs font-medium uppercase tracking-wide" style="color: {mutedTextColor};">
+          Context
+        </div>
+        <div class="mt-1 leading-relaxed sentence-context">
           {#if isLoadingFurigana}
-            <span class="text-gray-400">{$wordLookupState$.sentence}</span>
+            <span style="color: {mutedTextColor};">{$wordLookupState$.sentence}</span>
           {:else}
             {@html furiganaHtml}
+          {/if}
+        </div>
+      </div>
+    {/if}
+
+    <!-- Translation -->
+    {#if $deeplApiKey$ && $wordLookupState$.sentence}
+      <div
+        class="border-t p-4"
+        style="border-color: {borderColor}; background-color: {sectionBgColor};"
+      >
+        <div class="text-xs font-medium uppercase tracking-wide" style="color: {mutedTextColor};">
+          Translation
+        </div>
+        <div class="mt-1 leading-relaxed">
+          {#if isLoadingTranslation}
+            <span style="color: {mutedTextColor};">Translating...</span>
+          {:else if translationError}
+            <span class="text-sm text-red-500">{translationError}</span>
+          {:else if translation}
+            {translation}
           {/if}
         </div>
       </div>
@@ -205,6 +297,17 @@
     }
   }
 
+  /* Close button hover */
+  .close-button:hover {
+    background-color: var(--hover-bg);
+    color: var(--hover-color);
+  }
+
+  /* Toggle button hover */
+  .toggle-button:hover {
+    color: var(--hover-color);
+  }
+
   /* Furigana styling */
   .sentence-context :global(ruby) {
     ruby-align: center;
@@ -212,10 +315,17 @@
 
   .sentence-context :global(rt) {
     font-size: 0.6em;
-    color: #6b7280;
+    color: var(--muted-color);
   }
 
   .sentence-context :global(rp) {
     display: none;
+  }
+
+  /* Word highlight in context */
+  .sentence-context :global(.word-highlight) {
+    background-color: var(--highlight-color);
+    border-radius: 0.125rem;
+    padding: 0 0.125rem;
   }
 </style>
