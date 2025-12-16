@@ -24,7 +24,7 @@ export interface KuroshiroToken {
 }
 
 /**
- * Custom kuromoji analyzer for kuroshiro with IndexedDB caching
+ * Custom kuromoji analyzer for kuroshiro
  */
 export class CachingKuromojiAnalyzer {
   private tokenizer: Awaited<ReturnType<TokenizerBuilder['build']>> | null = null;

@@ -8,7 +8,6 @@
     type LoadProgress
   } from '$lib/data/database/dictionary-db/dictionary-loader';
   import { initFuriganaGenerator } from '$lib/functions/furigana/furigana-generator';
-  import { isKuromojiCached } from '$lib/data/database/kuromoji-db/kuromoji-db';
   import type { KuromojiLoadProgress } from '$lib/data/database/kuromoji-db/kuromoji-loader';
 
   const dispatch = createEventDispatcher<{ complete: void; error: Error }>();
@@ -17,18 +16,13 @@
 
   let stage: LoadingStage = 'kuromoji';
   let jmdictProgress: LoadProgress = { current: 0, total: 52, phase: 'checking' };
-  let kuromojiProgress: KuromojiLoadProgress = { current: 0, total: 12, phase: 'checking' };
+  let kuromojiProgress: KuromojiLoadProgress = { current: 0, total: 12, phase: 'loading' };
   let errorMessage = '';
 
   onMount(async () => {
     try {
-      // Stage 1: Load Kuromoji for furigana (smaller, ~18MB)
+      // Stage 1: Load Kuromoji for furigana (~18MB, cached by service worker)
       stage = 'kuromoji';
-      const kuromojiCached = await isKuromojiCached();
-
-      if (!kuromojiCached) {
-        kuromojiProgress = { current: 0, total: 12, phase: 'checking' };
-      }
 
       await initFuriganaGenerator((p) => {
         kuromojiProgress = p;
@@ -63,10 +57,6 @@
   ): string {
     if (currentStage === 'kuromoji') {
       const p = progress as KuromojiLoadProgress;
-      if (p.phase === 'checking') return 'Checking furigana engine...';
-      if (p.phase === 'downloading')
-        return `Downloading ${p.filename || 'files'}... (${p.current + 1}/${p.total})`;
-      if (p.phase === 'caching') return `Caching ${p.filename || 'files'}...`;
       if (p.phase === 'loading') return `Loading furigana engine... (${p.current}/${p.total})`;
       return 'Furigana engine ready!';
     } else {

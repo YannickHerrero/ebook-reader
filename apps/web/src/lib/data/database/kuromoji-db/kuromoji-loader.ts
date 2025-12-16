@@ -5,18 +5,26 @@
  */
 
 import type { LoaderConfig } from '@patdx/kuromoji';
-import {
-  getCachedDictionary,
-  cacheDictionary,
-  isKuromojiCached,
-  setKuromojiCached,
-  getKuromojiDictFiles
-} from './kuromoji-db';
 
 const KUROMOJI_DICT_PATH = '/kuromoji-dict';
 
+const KUROMOJI_DICT_FILES = [
+  'base.dat.gz',
+  'check.dat.gz',
+  'tid.dat.gz',
+  'tid_pos.dat.gz',
+  'tid_map.dat.gz',
+  'cc.dat.gz',
+  'unk.dat.gz',
+  'unk_pos.dat.gz',
+  'unk_map.dat.gz',
+  'unk_char.dat.gz',
+  'unk_compat.dat.gz',
+  'unk_invoke.dat.gz'
+];
+
 export interface KuromojiLoadProgress {
-  phase: 'checking' | 'downloading' | 'caching' | 'loading' | 'complete';
+  phase: 'loading' | 'complete';
   current: number;
   total: number;
   filename?: string;
@@ -25,42 +33,21 @@ export interface KuromojiLoadProgress {
 export type KuromojiProgressCallback = (progress: KuromojiLoadProgress) => void;
 
 /**
- * Create a custom loader for kuromoji that caches dictionaries in IndexedDB
+ * Create a loader for kuromoji that fetches dictionaries
+ * Files are cached by the service worker
  */
 export function createCachingLoader(onProgress?: KuromojiProgressCallback): LoaderConfig {
-  const dictFiles = getKuromojiDictFiles();
   let loadedCount = 0;
+  const total = KUROMOJI_DICT_FILES.length;
 
   return {
     async loadArrayBuffer(url: string): Promise<ArrayBufferLike> {
-      // Extract filename from URL
       const filename = url.split('/').pop() || url;
 
       onProgress?.({
         phase: 'loading',
         current: loadedCount,
-        total: dictFiles.length,
-        filename
-      });
-
-      // Try to get from cache first
-      const cached = await getCachedDictionary(filename);
-      if (cached) {
-        loadedCount++;
-        onProgress?.({
-          phase: 'loading',
-          current: loadedCount,
-          total: dictFiles.length,
-          filename
-        });
-        return cached;
-      }
-
-      // Fetch from network
-      onProgress?.({
-        phase: 'downloading',
-        current: loadedCount,
-        total: dictFiles.length,
+        total,
         filename
       });
 
@@ -71,99 +58,17 @@ export function createCachingLoader(onProgress?: KuromojiProgressCallback): Load
 
       const arrayBuffer = await response.arrayBuffer();
 
-      // Cache for future use
-      onProgress?.({
-        phase: 'caching',
-        current: loadedCount,
-        total: dictFiles.length,
-        filename
-      });
-
-      await cacheDictionary(filename, arrayBuffer);
-
       loadedCount++;
       onProgress?.({
         phase: 'loading',
         current: loadedCount,
-        total: dictFiles.length,
+        total,
         filename
       });
 
       return arrayBuffer;
     }
   };
-}
-
-/**
- * Preload and cache all kuromoji dictionary files
- * This can be called during initial setup to cache everything upfront
- */
-export async function preloadKuromojiDictionaries(
-  onProgress?: KuromojiProgressCallback
-): Promise<void> {
-  const dictFiles = getKuromojiDictFiles();
-
-  onProgress?.({
-    phase: 'checking',
-    current: 0,
-    total: dictFiles.length
-  });
-
-  // Check if already cached
-  const alreadyCached = await isKuromojiCached();
-  if (alreadyCached) {
-    onProgress?.({
-      phase: 'complete',
-      current: dictFiles.length,
-      total: dictFiles.length
-    });
-    return;
-  }
-
-  // Download and cache each file
-  for (let i = 0; i < dictFiles.length; i++) {
-    const filename = dictFiles[i];
-    const url = `${KUROMOJI_DICT_PATH}/${filename}`;
-
-    onProgress?.({
-      phase: 'downloading',
-      current: i,
-      total: dictFiles.length,
-      filename
-    });
-
-    // Check if this specific file is cached
-    const cached = await getCachedDictionary(filename);
-    if (cached) {
-      continue;
-    }
-
-    // Fetch and cache
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${url}: ${response.status}`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-
-    onProgress?.({
-      phase: 'caching',
-      current: i,
-      total: dictFiles.length,
-      filename
-    });
-
-    await cacheDictionary(filename, arrayBuffer);
-  }
-
-  // Mark as fully cached
-  await setKuromojiCached(true);
-
-  onProgress?.({
-    phase: 'complete',
-    current: dictFiles.length,
-    total: dictFiles.length
-  });
 }
 
 /**
