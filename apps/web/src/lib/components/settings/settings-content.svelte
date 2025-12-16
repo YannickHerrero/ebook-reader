@@ -1,6 +1,12 @@
 <script lang="ts">
   import { browser } from '$app/environment';
-  import { faComputer, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons';
+  import {
+    faComputer,
+    faDownload,
+    faPlus,
+    faSpinner,
+    faCheck
+  } from '@fortawesome/free-solid-svg-icons';
   import {
     TrackerAutoPause,
     TrackerSkipThresholdAction
@@ -46,6 +52,12 @@
   import type { WritingMode } from '$lib/data/writing-mode';
   import { secondsToMinutes } from '$lib/functions/statistic-util';
   import { dummyFn } from '$lib/functions/utils';
+  import {
+    preloadKuromojiDictionaries,
+    type KuromojiLoadProgress
+  } from '$lib/data/database/kuromoji-db/kuromoji-loader';
+  import { isKuromojiCached } from '$lib/data/database/kuromoji-db/kuromoji-db';
+  import { furiganaEnabled$ } from '$lib/data/store';
   import {
     ReplicationSaveBehavior,
     AutoReplicationType
@@ -348,6 +360,45 @@
   let furiganaStyleTooltip = '';
   let autoReplicationTypeTooltip = '';
   let trackerAutoPauseTooltip = '';
+
+  // Furigana loading state
+  let furiganaLoading = false;
+  let furiganaCached = false;
+  let furiganaProgress: KuromojiLoadProgress | null = null;
+
+  // Check furigana cache status on mount
+  $: if (browser && wordLookupEnabled) {
+    isKuromojiCached().then((cached) => {
+      furiganaCached = cached;
+      if (cached) {
+        $furiganaEnabled$ = true;
+      }
+    });
+  }
+
+  async function loadFuriganaDictionary() {
+    furiganaLoading = true;
+    furiganaProgress = null;
+    try {
+      await preloadKuromojiDictionaries((p) => {
+        furiganaProgress = p;
+      });
+      furiganaCached = true;
+      $furiganaEnabled$ = true;
+    } catch (error) {
+      dialogManager.dialogs$.next([
+        {
+          component: MessageDialog,
+          props: {
+            title: 'Error',
+            message: `Failed to load furigana dictionary: ${error instanceof Error ? error.message : 'Unknown error'}`
+          }
+        }
+      ]);
+    } finally {
+      furiganaLoading = false;
+    }
+  }
 
   $: if ($textMarginMode$ === 'auto') {
     $textMarginValue$ = 0;
@@ -777,6 +828,41 @@
           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
           bind:value={deeplApiKey}
         />
+      </SettingsItemGroup>
+      <SettingsItemGroup
+        title="Furigana"
+        tooltip={'Download the furigana dictionary (~18MB) to enable furigana generation for Japanese text. Stored locally for offline use.'}
+      >
+        {#if furiganaCached}
+          <div class="flex items-center gap-2 text-green-500">
+            <Fa icon={faCheck} />
+            <span>Enabled</span>
+          </div>
+        {:else if furiganaLoading}
+          <div class="flex items-center gap-2">
+            <Fa icon={faSpinner} spin />
+            <span class="text-sm text-gray-400">
+              {#if furiganaProgress}
+                {furiganaProgress.phase === 'downloading'
+                  ? `Downloading ${furiganaProgress.filename || ''}... (${furiganaProgress.current}/${furiganaProgress.total})`
+                  : furiganaProgress.phase === 'caching'
+                    ? `Caching ${furiganaProgress.filename || ''}...`
+                    : `Loading... (${furiganaProgress.current}/${furiganaProgress.total})`}
+              {:else}
+                Checking...
+              {/if}
+            </span>
+          </div>
+        {:else}
+          <button
+            class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            on:click={loadFuriganaDictionary}
+          >
+            <Fa icon={faDownload} />
+            <span>Download (~18MB)</span>
+            <Ripple />
+          </button>
+        {/if}
       </SettingsItemGroup>
     {/if}
     {#if statisticsEnabled}

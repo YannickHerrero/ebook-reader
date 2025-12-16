@@ -489,5 +489,8 @@ export const userFonts$ = writableArrayLocalStorageSubject<UserFont>()('userfont
 export const wordLookupEnabled$ = writableBooleanLocalStorageSubject()('wordLookupEnabled', false);
 export const dictionaryLoaded$ = writableSubject<boolean>(false);
 
+// Furigana feature (separate from word lookup)
+export const furiganaEnabled$ = writableBooleanLocalStorageSubject()('furiganaEnabled', false);
+
 // Translation feature
 export const deeplApiKey$ = writableStringLocalStorageSubject()('deeplApiKey', '');

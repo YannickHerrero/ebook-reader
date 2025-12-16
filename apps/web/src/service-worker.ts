@@ -12,16 +12,14 @@ const BUILD_CACHE_NAME = `build:${version}`;
 
 const prerenderedSet = new Set(prerendered);
 
-// Exclude large dictionary files from pre-cache
-// - JMdict: stored in IndexedDB after parsing, no need to cache
-// - Kuromoji: cached at runtime when needed
-const excludeFromPreCache = ['/JMdict_english/', '/kuromoji-dict/'];
+// Exclude JMdict files from pre-cache (stored in IndexedDB after parsing)
+// Kuromoji files are now fetched from CDN and stored in IndexedDB
+const excludeFromPreCache = ['/JMdict_english/'];
 const assetsToCache = build
   .concat(files)
   .concat(prerendered)
   .filter((path) => !excludeFromPreCache.some((p) => path.includes(p)));
 const cachedAssets = new Set(assetsToCache);
-const KUROMOJI_CACHE_NAME = `kuromoji:${version}`;
 
 worker.addEventListener('install', (event) => {
   worker.skipWaiting();
@@ -32,8 +30,7 @@ worker.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       const keysWithOldCache = keys.filter(
-        (key) =>
-          key !== BUILD_CACHE_NAME && key !== userFontsCacheName && key !== KUROMOJI_CACHE_NAME
+        (key) => key !== BUILD_CACHE_NAME && key !== userFontsCacheName
       );
       return Promise.all(keysWithOldCache.map((key) => caches.delete(key)));
     })
@@ -54,25 +51,6 @@ worker.addEventListener('fetch', (event) => {
   const skipBecauseUncached = event.request.cache === 'only-if-cached' && !isBuildAsset;
 
   if (!isHttp || isDevServerRequest || skipBecauseUncached) return;
-
-  // Kuromoji dictionary files: runtime cache (needed for offline, not stored in IndexedDB)
-  if (isSelfHost && url.pathname.startsWith('/kuromoji-dict/')) {
-    event.respondWith(
-      caches.match(url.pathname, { cacheName: KUROMOJI_CACHE_NAME }).then(
-        (cached) =>
-          cached ??
-          fetch(event.request).then((response) => {
-            if (response.ok) {
-              caches
-                .open(KUROMOJI_CACHE_NAME)
-                .then((cache) => cache.put(url.pathname, response.clone()));
-            }
-            return response;
-          })
-      )
-    );
-    return;
-  }
 
   // JMdict files: no caching needed (stored in IndexedDB after parsing)
   if (isSelfHost && url.pathname.startsWith('/JMdict_english/')) {
